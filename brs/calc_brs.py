@@ -1,18 +1,14 @@
 """
 Расчёт итогового рейтинга по Балльно-рейтинговой системе (БРС)
 курса «Алгоритмы и структуры данных».
-
 Зависимости: pandas, numpy
 """
-
 import argparse
 import re
 import sys
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
-
 
 # ============================================================
 # КОНСТАНТЫ БРС
@@ -20,30 +16,23 @@ import pandas as pd
 SCORE_ON_TIME = 100
 SCORE_LATE = 50
 SCORE_ABSENT = 0
-
 HARD_DEADLINE_CAP = 50
-LATE_PENALTY = 50
+LATE_PENALTY = 50          # штраф за одну несданную ЛР (включается в S_лаб)
 MIN_LAB_THRESHOLD = 50
 PASSING_SCORE = 70
 BONUS_PROJECT_SCORE = 10
-
 WEIGHT_ATTENDANCE = 0.15
 WEIGHT_QUIZ = 0.10
 WEIGHT_REPORT = 0.15
 WEIGHT_LABS = 0.60
 
-
 # ============================================================
 # АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ СТРУКТУРЫ CSV
 # ============================================================
-def find_numbered_columns(columns: list[str],
-                          prefix: str,
+def find_numbered_columns(columns: list[str], prefix: str,
                           exclude_prefixes: list[str] | None = None) -> list[int]:
-    """
-    Находит все номера N в именах колонок вида '<prefix>_N_<suffix>'.
-    Опционально исключает колонки, начинающиеся с одного из exclude_prefixes.
-    """
-    pattern = re.compile(rf"^{re.escape(prefix)}_(\d+)_")
+    """Находит все номера N в именах колонок вида '<prefix>N<suffix>'."""
+    pattern = re.compile(rf"^{re.escape(prefix)}(\d+)")
     numbers = set()
     for col in columns:
         if exclude_prefixes and any(col.startswith(f"{ep}_") for ep in exclude_prefixes):
@@ -58,14 +47,10 @@ def detect_structure(df: pd.DataFrame) -> dict:
     """Определяет количество лекций, лаб. занятий и ЛР в файле."""
     cols = list(df.columns)
     return {
-        "lectures": find_numbered_columns(cols, "lecture"),
-        "lab_sessions": find_numbered_columns(cols, "lab_session"),
-        "labs": find_numbered_columns(
-            cols, "lab",
-            exclude_prefixes=["lab_session"]
-        ),
+        "lectures": find_numbered_columns(cols, "lecture_"),
+        "lab_sessions": find_numbered_columns(cols, "lab_session_"),
+        "labs": find_numbered_columns(cols, "lab_", exclude_prefixes=["lab_session_"]),
     }
-
 
 # ============================================================
 # ФУНКЦИИ РАСЧЁТА
@@ -138,27 +123,38 @@ def calc_report(row: pd.Series, structure: dict) -> float:
 
 
 def calc_labs(row: pd.Series, structure: dict) -> tuple[float, bool, int]:
-    """Возвращает (S_лаб, all_submitted, late_count)."""
+    """
+    Возвращает (S_лаб, all_submitted, late_count).
+    Штраф за несданную ЛР (-LATE_PENALTY) включается в средний балл S_лаб.
+    """
     final_scores = []
     all_submitted = True
     late_count = 0
-
     for n in structure["labs"]:
         score_col = f"lab_{n}_score"
         deadline_col = f"lab_{n}_deadline"
-
         if score_col not in row.index or deadline_col not in row.index:
             continue
 
-        status = str(row[deadline_col]).strip().lower() if pd.notna(row[deadline_col]) else ""
+        deadline_val = row[deadline_col]
+        score_val = row[score_col]
 
-        if status in ("not_submitted", "не сдано", "не сдана"):
-            final_scores.append(0.0)
+        # Пустые ячейки = работа не сдана → штраф в среднем балле
+        if pd.isna(deadline_val) and pd.isna(score_val):
+            final_scores.append(-float(LATE_PENALTY))
             all_submitted = False
             late_count += 1
             continue
 
-        raw_score = float(row[score_col]) if pd.notna(row[score_col]) else 0.0
+        status = str(deadline_val).strip().lower() if pd.notna(deadline_val) else ""
+
+        if status in ("not_submitted", "не сдано", "не сдана"):
+            final_scores.append(-float(LATE_PENALTY))
+            all_submitted = False
+            late_count += 1
+            continue
+
+        raw_score = float(score_val) if pd.notna(score_val) else 0.0
 
         if status in ("on_time", "вовремя", ""):
             final_scores.append(min(raw_score, 100.0))
@@ -174,25 +170,16 @@ def calc_labs(row: pd.Series, structure: dict) -> tuple[float, bool, int]:
 
 
 def parse_project_value(value) -> bool:
-    """
-    Парсит значение колонки project.
-    Поддерживает: 1, True, "yes", "да", "1" и т.д.
-    """
+    """Парсит значение колонки project."""
     if pd.isna(value):
         return False
-
     s = str(value).strip().lower()
-
-    # Числовые значения
     if s in ("1", "true", "yes", "да", "y"):
         return True
-
-    # Попытка преобразовать в число
     try:
         return int(float(s)) == 1
     except (ValueError, TypeError):
         return False
-
 
 def evaluate_student(row: pd.Series, structure: dict) -> pd.Series:
     """Полный расчёт рейтинга и блокирующих условий."""
@@ -201,32 +188,30 @@ def evaluate_student(row: pd.Series, structure: dict) -> pd.Series:
     s_dok = calc_report(row, structure)
     s_lab, all_submitted, late_count = calc_labs(row, structure)
 
+    # Взвешенные значения
+    s_pos_w = s_pos * WEIGHT_ATTENDANCE
+    s_opr_w = s_opr * WEIGHT_QUIZ
+    s_dok_w = s_dok * WEIGHT_REPORT
+    s_lab_w = s_lab * WEIGHT_LABS
+
     # Обработка проекта
     has_project = False
     project_raw_value = None
-
-    # Ищем колонку project (с возможными пробелами)
     project_col = None
     for col in row.index:
         if col.strip().lower() == "project":
             project_col = col
             break
-
     if project_col:
         project_raw_value = row[project_col]
         has_project = parse_project_value(project_raw_value)
 
-    rating = (s_pos * WEIGHT_ATTENDANCE
-              + s_opr * WEIGHT_QUIZ
-              + s_dok * WEIGHT_REPORT
-              + s_lab * WEIGHT_LABS)
-
-    penalty = late_count * LATE_PENALTY
-    rating_after_penalty = max(rating - penalty, 0.0)
-
+    # Сумма взвешенных баллов (может быть отрицательной)
+    rating_sum = s_pos_w + s_opr_w + s_dok_w + s_lab_w
     bonus = BONUS_PROJECT_SCORE if has_project else 0
-    rating_with_bonus = min(rating_after_penalty + bonus, 100.0)
+    rating_with_bonus = min(rating_sum + bonus, 100.0)
 
+    # Блокировки
     block_reasons = []
     if not all_submitted:
         block_reasons.append("не сданы все ЛР")
@@ -235,19 +220,23 @@ def evaluate_student(row: pd.Series, structure: dict) -> pd.Series:
 
     is_blocked = len(block_reasons) > 0
 
-    # Если заблокирован, бонус не учитывается
-    final_rating = 0.0 if is_blocked else rating_with_bonus
+    # При блоке — бонус сгорает, рейтинг обнуляется.
+    # Иначе — рейтинг не может быть отрицательным.
+    final_rating = 0.0 if is_blocked else max(rating_with_bonus, 0.0)
     is_passed = (not is_blocked) and (final_rating >= PASSING_SCORE)
 
     return pd.Series({
         "S_пос": round(s_pos, 2),
+        "S_пос_взв": round(s_pos_w, 2),
         "S_опр": round(s_opr, 2),
+        "S_опр_взв": round(s_opr_w, 2),
         "S_док": round(s_dok, 2),
+        "S_док_взв": round(s_dok_w, 2),
         "S_лаб": round(s_lab, 2),
+        "S_лаб_взв": round(s_lab_w, 2),
         "ЛР_сдано": len(structure["labs"]) - late_count,
         "ЛР_всего": len(structure["labs"]),
-        "Рейтинг_до_штрафа": round(rating, 2),
-        "Штраф_ЛР": penalty,
+        "Рейтинг_сумма": round(rating_sum, 2),
         "Проект_raw": str(project_raw_value) if project_raw_value is not None else "N/A",
         "Проект": "ДА" if has_project else "НЕТ",
         "Бонус_проект": bonus,
@@ -257,7 +246,6 @@ def evaluate_student(row: pd.Series, structure: dict) -> pd.Series:
         "Зачёт": "ДА" if is_passed else "НЕТ",
     })
 
-
 # ============================================================
 # ВЫБОР ФАЙЛА
 # ============================================================
@@ -265,9 +253,7 @@ def select_csv_file() -> Path:
     """Интерактивный выбор CSV-файла из текущей директории."""
     csv_files = sorted(Path(".").glob("*.csv"))
     if not csv_files:
-        raise FileNotFoundError(
-            "В текущей директории не найдено ни одного CSV-файла."
-        )
+        raise FileNotFoundError("В текущей директории не найдено ни одного CSV-файла.")
     print("\nДоступные файлы групп:")
     for i, f in enumerate(csv_files, start=1):
         print(f"  {i}. {f.name}")
@@ -276,7 +262,6 @@ def select_csv_file() -> Path:
         if choice.isdigit() and 1 <= int(choice) <= len(csv_files):
             return csv_files[int(choice) - 1]
         print("Некорректный ввод. Попробуйте снова.")
-
 
 # ============================================================
 # ТОЧКА ВХОДА
@@ -300,14 +285,12 @@ def main() -> None:
 
     df = pd.read_csv(csv_path)
 
-    # Проверка наличия колонки project
     has_project_col = any(col.strip().lower() == "project" for col in df.columns)
     if not has_project_col:
         print("⚠️  В файле отсутствует колонка 'project'. Бонусные баллы не будут начислены.")
         print("   Добавьте колонку 'project' со значениями 0 или 1.\n")
 
     structure = detect_structure(df)
-
     print(f"\n📂 Файл: {csv_path}")
     print(f"👥 Студентов: {len(df)}")
     print(f"📚 Лекций обнаружено: {len(structure['lectures'])}")
@@ -322,12 +305,15 @@ def main() -> None:
 
     results = df.apply(lambda row: evaluate_student(row, structure), axis=1)
     df_out = pd.concat([df[["student_id"]], results], axis=1)
-
     df_out.to_csv(output_path, index=False, encoding="utf-8-sig")
     print(f"✅ Результаты сохранены в {output_path}\n")
 
-    display_cols = ["student_id", "S_пос", "S_опр", "S_док", "S_лаб",
-                    "ЛР_сдано", "Проект", "Бонус_проект", "Рейтинг_итог", "Блок", "Зачёт"]
+    display_cols = [
+        "student_id", "S_пос", "S_пос_взв",
+        "S_опр", "S_опр_взв", "S_док", "S_док_взв",
+        "S_лаб", "S_лаб_взв", "ЛР_сдано",
+        "Проект", "Бонус_проект", "Рейтинг_сумма", "Рейтинг_итог", "Блок", "Зачёт",
+    ]
     print(df_out[display_cols].to_string(index=False))
 
 

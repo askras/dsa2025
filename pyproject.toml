@@ -20,6 +20,7 @@ dependencies = [
     "notebook (>=7.4.5,<8.0.0)",
     "pandas (>=3.0.5,<4.0.0)",
     "sympy (>=1.14.0,<2.0.0)",
+    "jupyterlab-spreadsheet-editor (>=0.7.2,<0.8.0)",
 ]
 
 

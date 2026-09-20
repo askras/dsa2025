@@ -172,3 +172,6 @@ cython_debug/
 
 # Jupyter
 .jupyterlab_config/
+
+#Mac
+.DS_Store

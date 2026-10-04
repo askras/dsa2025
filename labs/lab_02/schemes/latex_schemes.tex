@@ -1,0 +1,140 @@
+\documentclass{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+\usepackage[margin=2cm]{geometry}
+\usepackage{adjustbox}
+
+\tikzset{
+  startstop/.style={rectangle, rounded corners=8pt, minimum width=3cm, minimum height=0.8cm, text centered, draw=black, fill=red!20},
+  io/.style={trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=3cm, minimum height=0.8cm, text centered, draw=black, fill=blue!15},
+  process/.style={rectangle, minimum width=4cm, minimum height=0.9cm, text centered, text width=4.5cm, draw=black, fill=orange!20},
+  decision/.style={diamond, aspect=2.5, minimum height=1cm, text centered, draw=black, fill=green!20, inner sep=1pt},
+  arrow/.style={thick, -{Stealth[length=2.5mm]}}
+}
+
+\begin{document}
+
+\maketitle
+
+\section{Блок-схема основной процедуры QuickSort}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.8cm and 1cm]
+  \node (start) [startstop] {Начало};
+  \node (in)    [io, below=of start] {Ввод: $A$, $low$, $high$};
+  \node (cond)  [decision, below=of in] {$low < high$?};
+  \node (p1)    [process, below=1.2cm of cond] {$p \leftarrow$ Partition($A$, $low$, $high$)};
+  \node (p2)    [process, below=of p1] {QuickSort($A$, $low$, $p$)};
+  \node (p3)    [process, below=of p2] {QuickSort($A$, $p+1$, $high$)};
+  \node (stop)  [startstop, below=of p3] {Конец};
+
+  \draw [arrow] (start) -- (in);
+  \draw [arrow] (in) -- (cond);
+  \draw [arrow] (cond) -- node[right]{Да} (p1);
+  \draw [arrow] (p1) -- (p2);
+  \draw [arrow] (p2) -- (p3);
+  \draw [arrow] (p3) -- (stop);
+  \draw [arrow] (cond.east) -- node[above]{Нет} ++(3.6,0) |- (stop.east);
+\end{tikzpicture}
+\end{center}
+
+\newpage
+\section{Блок-схема разбиения Partition (схема Хоара)}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.7cm]
+  \node (start) [startstop] {Начало: Partition($A$, $low$, $high$)};
+  \node (init1) [process, below=of start] {$pivot \leftarrow A[\lfloor (low+high)/2 \rfloor]$};
+  \node (init2) [process, below=of init1] {$i \leftarrow low - 1$;\quad $j \leftarrow high + 1$};
+  \node (incI)  [process, below=of init2] {$i \leftarrow i + 1$};
+  \node (dI)    [decision, below=of incI] {$A[i] < pivot$?};
+  \node (decJ)  [process, below=1.1cm of dI] {$j \leftarrow j - 1$};
+  \node (dJ)    [decision, below=of decJ] {$A[j] > pivot$?};
+  \node (dEnd)  [decision, below=1.1cm of dJ] {$i \ge j$?};
+  \node (ret)   [io, below=1.1cm of dEnd] {Вернуть $j$};
+  \node (stop)  [startstop, below=of ret] {Конец};
+  \node (swap)  [process, right=3.6cm of dEnd, text width=3cm] {Обмен: $A[i] \leftrightarrow A[j]$};
+
+  \draw [arrow] (start) -- (init1);
+  \draw [arrow] (init1) -- (init2);
+  \draw [arrow] (init2) -- (incI);
+  \draw [arrow] (incI) -- (dI);
+  \draw [arrow] (dI) -- node[right]{Нет} (decJ);
+  \draw [arrow] (decJ) -- (dJ);
+  \draw [arrow] (dJ) -- node[right]{Нет} (dEnd);
+  \draw [arrow] (dEnd) -- node[right]{Да} (ret);
+  \draw [arrow] (ret) -- (stop);
+  % циклы поиска
+  \draw [arrow] (dI.west) -- node[above]{Да} ++(-2.2,0) |- (incI.west);
+  \draw [arrow] (dJ.west) -- node[above]{Да} ++(-2.2,0) |- (decJ.west);
+  % обмен и возврат в начало цикла
+  \draw [arrow] (dEnd.east) -- node[above]{Нет} (swap.west);
+  \draw [arrow] (swap.north) |- (incI.east);
+\end{tikzpicture}
+\end{center}
+
+\newpage
+\section{Сортировка перемешиванием (cocktail shaker sort)}
+
+\begin{center}
+\begin{adjustbox}{max totalsize={\textwidth}{0.78\textheight}}
+\begin{tikzpicture}[node distance=0.5cm]
+  \node (start) [startstop] {Начало};
+  \node (in)    [io, below=of start] {Ввод: $A$, $n$};
+  \node (init)  [process, below=of in] {$start \leftarrow 0$;\quad $end \leftarrow n-1$;\\ $swapped \leftarrow true$};
+  \node (dW)    [decision, below=0.7cm of init] {$swapped$?};
+  \node (p0)    [process, below=0.8cm of dW] {$swapped \leftarrow false$};
+
+  % проход слева направо
+  \node (fi)    [process, below=of p0] {$i \leftarrow start$};
+  \node (fc)    [decision, below=0.7cm of fi] {$i < end$?};
+  \node (fcmp)  [decision, below=0.8cm of fc] {$A[i] > A[i+1]$?};
+  \node (finc)  [process, below=0.8cm of fcmp] {$i \leftarrow i+1$};
+  \node (fswap) [process, right=0.8cm of fcmp, text width=3.2cm] {Обмен $A[i] \leftrightarrow A[i+1]$;\\ $swapped \leftarrow true$};
+
+  \node (dS)    [decision, below=0.9cm of finc] {$swapped$?};
+
+  % проход справа налево
+  \node (bp)    [process, below=0.8cm of dS] {$swapped \leftarrow false$;\\ $end \leftarrow end-1$;\quad $i \leftarrow end-1$};
+  \node (bc)    [decision, below=0.7cm of bp] {$i \ge start$?};
+  \node (bcmp)  [decision, below=0.8cm of bc] {$A[i] > A[i+1]$?};
+  \node (binc)  [process, below=0.8cm of bcmp] {$i \leftarrow i-1$};
+  \node (bswap) [process, left=0.8cm of bcmp, text width=3.2cm] {Обмен $A[i] \leftrightarrow A[i+1]$;\\ $swapped \leftarrow true$};
+
+  \node (incs)  [process, below=0.9cm of binc] {$start \leftarrow start+1$};
+  \node (stop)  [startstop, below=0.8cm of incs] {Конец};
+
+  \draw [arrow] (start) -- (in);
+  \draw [arrow] (in) -- (init);
+  \draw [arrow] (init) -- (dW);
+  \draw [arrow] (dW) -- node[right]{Да} (p0);
+  \draw [arrow] (p0) -- (fi);
+  \draw [arrow] (fi) -- (fc);
+  \draw [arrow] (fc) -- node[right]{Да} (fcmp);
+  \draw [arrow] (fcmp) -- node[right]{Нет} (finc);
+  \draw [arrow] (fcmp) -- node[above]{Да} (fswap);
+  \draw [arrow] (fswap.south) |- (finc.east);
+  \draw [arrow] (finc.west) -- (-3.0,0 |- finc) |- (fc.west);
+  \draw [arrow] (fc.east) -- node[above, pos=0.3]{Нет} (6.9,0 |- fc) |- (dS.east);
+
+  \draw [arrow] (dS) -- node[right]{Да} (bp);
+  \draw [arrow] (bp) -- (bc);
+  \draw [arrow] (bc) -- node[right]{Да} (bcmp);
+  \draw [arrow] (bcmp) -- node[right]{Нет} (binc);
+  \draw [arrow] (bcmp) -- node[above]{Да} (bswap);
+  \draw [arrow] (bswap.south) |- (binc.west);
+  \draw [arrow] (binc.east) -- (3.0,0 |- binc) |- (bc.east);
+  \draw [arrow] (bc.west) -- node[above, pos=0.3]{Нет} (-6.6,0 |- bc) |- (incs.west);
+
+  \draw [arrow] (incs.east) -- (7.8,0 |- incs) |- (dW.east);
+  \draw [arrow] (dW.west) -- node[above, pos=0.3]{Нет} (-7.8,0 |- dW) |- (stop.west);
+  \draw [arrow] (dS.west) -- node[above, pos=0.3]{Нет} (-7.8,0 |- dS) |- (stop.west);
+\end{tikzpicture}
+\end{adjustbox}
+\end{center}
+
+\end{document}

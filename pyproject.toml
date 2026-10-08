@@ -57,8 +57,15 @@ python -m jupyter lab --allow-root --NotebookApp.token='' --NotebookApp.password
 """
 
 calcbrs = """
+python ./brs/clear_pd.py ./brs/.students_36.csv ./brs/students_36.csv
 python ./brs/calc_brs.py ./brs/students_36.csv -o ./brs/result_36.csv
+
+python ./brs/clear_pd.py ./brs/.students_37.csv ./brs/students_37.csv
 python ./brs/calc_brs.py ./brs/students_37.csv -o ./brs/result_37.csv
+
+python ./brs/clear_pd.py ./brs/.students_38.csv ./brs/students_38.csv
 python ./brs/calc_brs.py ./brs/students_38.csv -o ./brs/result_38.csv
+
+python ./brs/clear_pd.py ./brs/.students_310.csv ./brs/students_310.csv
 python ./brs/calc_brs.py ./brs/students_310.csv -o ./brs/result_310.csv
 """

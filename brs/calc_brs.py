@@ -17,7 +17,7 @@ SCORE_ON_TIME = 100
 SCORE_LATE = 50
 SCORE_ABSENT = 0
 HARD_DEADLINE_CAP = 50
-LATE_PENALTY = 50          # штраф за одну несданную ЛР (включается в S_лаб)
+LATE_PENALTY = 50         # штраф за одну несданную ЛР (включается в S_лаб)
 MIN_LAB_THRESHOLD = 50
 PASSING_SCORE = 70
 BONUS_PROJECT_SCORE = 10
@@ -88,16 +88,36 @@ def calc_attendance(row: pd.Series, structure: dict) -> float:
     return float(np.mean(scores))
 
 
+def parse_attempt_score(value) -> float | None:
+    """
+    Балл за реальную попытку (опрос/доклад).
+    Пустая ячейка и 0 означают «не отвечал / не выступал» и не участвуют
+    в усреднении; балл нормализуется в диапазон [0, 100].
+    """
+    if pd.isna(value):
+        return None
+    s = str(value).strip()
+    if s == "":
+        return None
+    try:
+        score = float(s)
+    except ValueError:
+        return None
+    if score <= 0:
+        return None
+    return min(score, 100.0)
+
+
 def calc_quiz(row: pd.Series, structure: dict) -> float:
     """Балл за опросы по правилу сглаживания."""
     scores = []
     for n in structure["lectures"]:
         col = f"lecture_{n}_quiz"
-        if col in row.index and pd.notna(row[col]) and str(row[col]).strip() != "":
-            try:
-                scores.append(float(row[col]))
-            except ValueError:
-                continue
+        if col not in row.index:
+            continue
+        score = parse_attempt_score(row[col])
+        if score is not None:
+            scores.append(score)
     if not scores:
         return 0.0
     if len(scores) == 1:
@@ -110,15 +130,15 @@ def calc_quiz(row: pd.Series, structure: dict) -> float:
 
 
 def calc_report(row: pd.Series, structure: dict) -> float:
-    """Средний балл за доклады."""
+    """Средний балл за доклады (только за фактически сделанные)."""
     scores = []
     for n in structure["lectures"]:
         col = f"lecture_{n}_report"
-        if col in row.index and pd.notna(row[col]) and str(row[col]).strip() != "":
-            try:
-                scores.append(float(row[col]))
-            except ValueError:
-                continue
+        if col not in row.index:
+            continue
+        score = parse_attempt_score(row[col])
+        if score is not None:
+            scores.append(score)
     return float(np.mean(scores)) if scores else 0.0
 
 
@@ -283,7 +303,7 @@ def main() -> None:
 
     output_path = Path(args.output) if args.output else csv_path.with_name(f"results_{csv_path.name}")
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
 
     has_project_col = any(col.strip().lower() == "project" for col in df.columns)
     if not has_project_col:
@@ -305,7 +325,7 @@ def main() -> None:
 
     results = df.apply(lambda row: evaluate_student(row, structure), axis=1)
     df_out = pd.concat([df[["student_id"]], results], axis=1)
-    df_out.to_csv(output_path, index=False, encoding="utf-8-sig")
+    df_out.to_csv(output_path, index=False, encoding="utf-8")
     print(f"✅ Результаты сохранены в {output_path}\n")
 
     display_cols = [
